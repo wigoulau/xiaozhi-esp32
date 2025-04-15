@@ -18,6 +18,9 @@ set(SOURCES "audio_codecs/audio_codec.cc"
             "settings.cc"
             "background_task.cc"
             "main.cc"
+            "qca_motor_controller/qca_motor_controller.cc"
+            "qca_motor_controller/qca_preset_action.cc"
+            "qca_motor_controller/qca_pwm_helper.cc"
             )
 
 set(INCLUDE_DIRS "." "display" "audio_codecs" "protocols" "audio_processing")

@@ -9,6 +9,7 @@
 #include "font_awesome_symbols.h"
 #include "iot/thing_manager.h"
 #include "assets/lang_config.h"
+#include "qca_motor_controller/qca_motor_controller.h"
 
 #include <cstring>
 #include <esp_log.h>
@@ -429,6 +430,12 @@ void Application::Start() {
         app->AudioLoop();
         vTaskDelete(NULL);
     }, "audio_loop", 4096 * 2, this, 8, &audio_loop_task_handle_, realtime_chat_enabled_ ? 1 : 0);
+
+    xTaskCreatePinnedToCore([](void* arg) {
+        // Application* app = (Application*)arg;
+        qca_motor_handler(arg);
+        vTaskDelete(NULL);
+    }, "qca_motor_controller", 4096 * 2, this, 8, &motor_task_handle_, realtime_chat_enabled_ ? 1 : 0);
 
     /* Wait for the network to be ready */
     board.StartNetwork();
@@ -1098,45 +1105,45 @@ void Application::HandleCarCommand(const std::string& command) {
         // 可以在这里添加执行相应动作的代码
         // 例如：ExecuteAction(command);
     }
+    #endif
 
     if (command.length() > 10) {
         ESP_LOGI(TAG, "[%s] is not car command, ignore", command.c_str());
         return;
     }
-    #endif
 
     int i = 0;
     if (detectCommand(command, actionCommandsForward)) {
         ESP_LOGI(TAG, "detect command:前进");
-        // proceed_preset_action(100, 1, false);
+        proceed_preset_action(100, 1, false);
         i = 2;
     } else if (detectCommand(command, actionCommandsBackward)) {
         ESP_LOGI(TAG, "detect command:后退");
-        // proceed_preset_action(101, 1, false);
+        proceed_preset_action(101, 1, false);
         i = 4;
     } else if (detectCommand(command, actionCommandsLeftTurn)) {
         ESP_LOGI(TAG, "detect command:左转");
-        // proceed_preset_action(102, 1, false);
+        proceed_preset_action(102, 1, false);
         i = 5;
     } else if (detectCommand(command, actionCommandsRightTurn)) {
         ESP_LOGI(TAG, "detect command:右转");
-        // proceed_preset_action(103, 1, false);
+        proceed_preset_action(103, 1, false);
         i = 6;
     } else if (detectCommand(command, actionCommandsBackTurn)) {
         ESP_LOGI(TAG, "detect command:后转");
-        // proceed_preset_action(104, 1, false);
+        proceed_preset_action(104, 1, false);
         i = 7;
     } else if (detectCommand(command, actionCommandsTurnCircle)) {
         ESP_LOGI(TAG, "detect command:转圈");
-        // proceed_preset_action(105, 1, false);
+        proceed_preset_action(105, 1, false);
         i = 8;
     } else if (detectCommand(command, actionCommandsStop)) {
         ESP_LOGI(TAG, "detect command:停止");
-        // proceed_preset_action(0, 1, false);
+        proceed_preset_action(0, 1, false);
         i = 9;
     } else if (detectCommand(command, actionCommandsDance)) {
         ESP_LOGI(TAG, "detect command:跳个舞");
-        // proceed_preset_action(109, 1, false);
+        proceed_preset_action(109, 1, false);
         i = 10;
     } else {
         ESP_LOGI(TAG, "detect command:未知");

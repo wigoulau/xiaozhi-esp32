@@ -118,6 +118,9 @@ private:
     OpusResampler reference_resampler_;
     OpusResampler output_resampler_;
 
+    // motor controller
+    TaskHandle_t motor_task_handle_ = nullptr;
+
     void MainEventLoop();
     void OnAudioInput();
     void OnAudioOutput();
