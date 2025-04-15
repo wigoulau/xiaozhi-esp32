@@ -39,6 +39,8 @@ public:
     virtual Led* GetLed();
     virtual AudioCodec* GetAudioCodec() = 0;
     virtual Display* GetDisplay();
+    virtual Display* GetDisplayLeft();
+    virtual Display* GetDisplayRight();
     virtual Http* CreateHttp() = 0;
     virtual WebSocket* CreateWebSocket() = 0;
     virtual Mqtt* CreateMqtt() = 0;

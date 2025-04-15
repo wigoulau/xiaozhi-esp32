@@ -53,6 +53,16 @@ Display* Board::GetDisplay() {
     return &display;
 }
 
+Display* Board::GetDisplayLeft() {
+    static NoDisplay display;
+    return &display;
+}
+
+Display* Board::GetDisplayRight() {
+    static NoDisplay display;
+    return &display;
+}
+
 Led* Board::GetLed() {
     static NoLed led;
     return &led;

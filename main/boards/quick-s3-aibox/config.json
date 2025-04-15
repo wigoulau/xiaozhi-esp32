@@ -1,0 +1,10 @@
+{
+    "target": "esp32s3",
+    "builds": [
+        {
+            "name": "quick-s3-aibox",
+            "sdkconfig_append": [
+            ]
+        }
+    ]
+}

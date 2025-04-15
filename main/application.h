@@ -73,6 +73,7 @@ public:
     void WakeWordInvoke(const std::string& wake_word);
     void PlaySound(const std::string_view& sound);
     bool CanEnterSleepMode();
+    void HandleCarCommand(const std::string& command);
 
 private:
     Application();

@@ -15,6 +15,9 @@
 #include <cJSON.h>
 #include <driver/gpio.h>
 #include <arpa/inet.h>
+#include <unordered_set>
+
+#include "img/robot_eyes.h"
 
 #define TAG "Application"
 
@@ -206,6 +209,14 @@ void Application::Alert(const char* status, const char* message, const char* emo
     display->SetStatus(status);
     display->SetEmotion(emotion);
     display->SetChatMessage("system", message);
+    
+    auto displayRight = Board::GetInstance().GetDisplayRight();
+    displayRight->SetStatus(status);
+    displayRight->SetEmotion(emotion);
+    displayRight->SetChatMessage("system", message);
+
+    ESP_LOGW(TAG, "displayRight %p, display %p", displayRight, display);
+    
     if (!sound.empty()) {
         ResetDecoder();
         PlaySound(sound);
@@ -218,6 +229,11 @@ void Application::DismissAlert() {
         display->SetStatus(Lang::Strings::STANDBY);
         display->SetEmotion("neutral");
         display->SetChatMessage("system", "");
+        
+        auto displayRight = Board::GetInstance().GetDisplayRight();
+        displayRight->SetStatus(Lang::Strings::STANDBY);
+        displayRight->SetEmotion("neutral");
+        displayRight->SetChatMessage("system", "");
     }
 }
 
@@ -330,12 +346,62 @@ void Application::StopListening() {
     });
 }
 
+
+#include <esp_lcd_panel_io.h>
+#include <esp_lcd_panel_ops.h>
+extern esp_lcd_panel_handle_t panel1;
+extern esp_lcd_panel_handle_t panel2;
+
+// 定义25 张图片从image_data_robot_eyes_01到image_data_robot_eyes_25
+const uint16_t* image_data_robot_eyes[] = {
+    image_data_robot_eyes_01,
+    image_data_robot_eyes_02,
+    image_data_robot_eyes_03,
+    image_data_robot_eyes_04,
+    image_data_robot_eyes_05,
+    image_data_robot_eyes_06,
+    image_data_robot_eyes_07,
+    image_data_robot_eyes_08,
+    image_data_robot_eyes_09,
+    image_data_robot_eyes_10,
+    image_data_robot_eyes_11,
+    image_data_robot_eyes_12,
+    image_data_robot_eyes_13,
+    image_data_robot_eyes_14,
+    image_data_robot_eyes_15,
+    image_data_robot_eyes_16,
+    image_data_robot_eyes_17,
+    image_data_robot_eyes_18,
+    image_data_robot_eyes_19,
+    image_data_robot_eyes_20
+};
+void testimg() {
+    // while (true){
+        for (int i = 0; i < 20; i++) {
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+            esp_lcd_panel_draw_bitmap(panel1, 40, 40, 160+40, 160+40, image_data_robot_eyes[i]);
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+            esp_lcd_panel_draw_bitmap(panel2, 40, 40, 160+40, 160+40, image_data_robot_eyes[20-1-i]);
+        }
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    // }
+}
 void Application::Start() {
     auto& board = Board::GetInstance();
     SetDeviceState(kDeviceStateStarting);
 
+
+    // testimg();
     /* Setup the display */
     auto display = board.GetDisplay();
+    // display->SetStatus(Lang::Strings::LOADING_PROTOCOL);
+    // display->SetEmotion("neutral");
+    // display->SetChatMessage("system", "111启动了");
+    auto displayRight = board.GetDisplayRight();
+    // displayRight->SetStatus(Lang::Strings::ACTIVATION);
+    // displayRight->SetEmotion("sad");
+    // displayRight->SetChatMessage("system", "222启动了....");
+    // return;
 
     /* Setup the audio codec */
     auto codec = board.GetAudioCodec();
@@ -372,6 +438,7 @@ void Application::Start() {
 
     // Initialize the protocol
     display->SetStatus(Lang::Strings::LOADING_PROTOCOL);
+    displayRight->SetStatus(Lang::Strings::LOADING_PROTOCOL);
 #ifdef CONFIG_CONNECTION_TYPE_WEBSOCKET
     protocol_ = std::make_unique<WebsocketProtocol>();
 #else
@@ -407,6 +474,9 @@ void Application::Start() {
         Schedule([this]() {
             auto display = Board::GetInstance().GetDisplay();
             display->SetChatMessage("system", "");
+            auto displayRight = Board::GetInstance().GetDisplayRight();
+            displayRight->SetChatMessage("system", "");
+            
             SetDeviceState(kDeviceStateIdle);
         });
     });
@@ -487,6 +557,15 @@ void Application::Start() {
                 Alert(status->valuestring, message->valuestring, emotion->valuestring, Lang::Sounds::P3_VIBRATION);
             } else {
                 ESP_LOGW(TAG, "Alert command requires status, message and emotion");
+            }
+        } else if (strcmp(type->valuestring, "command") == 0) {
+            auto text = cJSON_GetObjectItem(root, "command");
+            if (text != NULL) {
+                ESP_LOGI(TAG, ">> %s", text->valuestring);
+                Schedule([this, display, message = std::string(text->valuestring)]() {
+                    // display->SetChatMessage("user", message.c_str());
+                    HandleCarCommand(message);
+                });
             }
         }
     });
@@ -587,6 +666,7 @@ void Application::OnClockTimer() {
                     char time_str[64];
                     strftime(time_str, sizeof(time_str), "%H:%M  ", localtime(&now));
                     Board::GetInstance().GetDisplay()->SetStatus(time_str);
+                    Board::GetInstance().GetDisplayRight()->SetStatus(time_str);
                 });
             }
         }
@@ -789,6 +869,7 @@ void Application::SetDeviceState(DeviceState state) {
 
     auto& board = Board::GetInstance();
     auto display = board.GetDisplay();
+    auto displayRight = board.GetDisplayRight();
     auto led = board.GetLed();
     led->OnStateChanged();
     switch (state) {
@@ -796,6 +877,8 @@ void Application::SetDeviceState(DeviceState state) {
         case kDeviceStateIdle:
             display->SetStatus(Lang::Strings::STANDBY);
             display->SetEmotion("neutral");
+            displayRight->SetStatus(Lang::Strings::STANDBY);
+            displayRight->SetEmotion("neutral");
 #if CONFIG_USE_AUDIO_PROCESSOR
             audio_processor_.Stop();
 #endif
@@ -807,10 +890,15 @@ void Application::SetDeviceState(DeviceState state) {
             display->SetStatus(Lang::Strings::CONNECTING);
             display->SetEmotion("neutral");
             display->SetChatMessage("system", "");
+            displayRight->SetStatus(Lang::Strings::CONNECTING);
+            displayRight->SetEmotion("neutral");
+            displayRight->SetChatMessage("system", "");
             break;
         case kDeviceStateListening:
             display->SetStatus(Lang::Strings::LISTENING);
             display->SetEmotion("neutral");
+            displayRight->SetStatus(Lang::Strings::LISTENING);
+            displayRight->SetEmotion("neutral");
 
             // Update the IoT states before sending the start listening command
             UpdateIotStates();
@@ -838,6 +926,7 @@ void Application::SetDeviceState(DeviceState state) {
             break;
         case kDeviceStateSpeaking:
             display->SetStatus(Lang::Strings::SPEAKING);
+            displayRight->SetStatus(Lang::Strings::SPEAKING);
 
             if (listening_mode_ != kListeningModeRealtime) {
 #if CONFIG_USE_AUDIO_PROCESSOR
@@ -926,4 +1015,134 @@ bool Application::CanEnterSleepMode() {
 
     // Now it is safe to enter sleep mode
     return true;
+}
+
+
+bool containsIgnoreCase(const std::string& str, const std::string& substr) {
+    auto it = std::search(
+        str.begin(), str.end(),
+        substr.begin(), substr.end(),
+        [](char ch1, char ch2) { return std::tolower(ch1) == std::tolower(ch2); }
+    );
+    return it != str.end();
+}
+
+// 前进
+std::unordered_set<std::string> actionCommandsForward = {
+    "往前走","前进","向前","向前冲","往前冲"
+};
+// 后退
+std::unordered_set<std::string> actionCommandsBackward = {
+    "向后退","后退","靠后"
+};
+// 左转
+std::unordered_set<std::string> actionCommandsLeftTurn = {
+    "左转","向左转","往左转","看左边","左边","向左"
+};
+// 右转
+std::unordered_set<std::string> actionCommandsRightTurn = {
+    "右转","向右转","往右转","看右边","右边","向右"
+};
+// 后转
+std::unordered_set<std::string> actionCommandsBackTurn = {
+    "后转","后退转","后退转","后退转","后退转"
+};
+// 转圈
+std::unordered_set<std::string> actionCommandsTurnCircle = {
+    "转圈","转个圈","转圈圈","打转","画圈"
+};
+// 停止
+std::unordered_set<std::string> actionCommandsStop = {
+    "停止","不许动","暂停","停止","立正"
+};
+// 跳个舞
+std::unordered_set<std::string> actionCommandsDance = {
+    "跳个舞"
+};
+
+// 检测命令是否包含任意一个动作指令
+bool detectCommand(const std::string& command, const std::unordered_set<std::string>& actionCommands) {
+    for (const auto& action : actionCommands) {
+        if (containsIgnoreCase(command, action)) {
+            return true;  // 匹配到任意一个动作指令
+        }
+    }
+    return false;  // 未匹配任何指令
+}
+
+void Application::HandleCarCommand(const std::string& command) {
+    auto currentState = GetDeviceState();
+    ESP_LOGI(TAG, "%s: command[%d]:%s", __func__, command.length(), command.c_str());
+
+    #if 0
+    // Schedule([this]() {
+    //     AbortSpeaking(kAbortReasonNone);
+    // }); 
+    // 如果当前是聆听或说话状态，则中止说话
+    if (currentState == kDeviceStateSpeaking) {
+        Schedule([this]() {
+            AbortSpeaking(kAbortReasonNone);
+        });
+    } else if (currentState == kDeviceStateListening) {  
+        // Schedule([this]() {
+        //     AbortSpeaking(kAbortReasonNone);
+        // }); 
+        Schedule([this]() {
+            if (protocol_) {
+                protocol_->CloseAudioChannel();
+            }
+        });
+    } else {
+        // 其他处理逻辑
+        ESP_LOGI(TAG, "检测到动作命令'%s'，但当前不在聆听/说话状态", command.c_str());
+        // 可以在这里添加执行相应动作的代码
+        // 例如：ExecuteAction(command);
+    }
+
+    if (command.length() > 10) {
+        ESP_LOGI(TAG, "[%s] is not car command, ignore", command.c_str());
+        return;
+    }
+    #endif
+
+    int i = 0;
+    if (detectCommand(command, actionCommandsForward)) {
+        ESP_LOGI(TAG, "detect command:前进");
+        // proceed_preset_action(100, 1, false);
+        i = 2;
+    } else if (detectCommand(command, actionCommandsBackward)) {
+        ESP_LOGI(TAG, "detect command:后退");
+        // proceed_preset_action(101, 1, false);
+        i = 4;
+    } else if (detectCommand(command, actionCommandsLeftTurn)) {
+        ESP_LOGI(TAG, "detect command:左转");
+        // proceed_preset_action(102, 1, false);
+        i = 5;
+    } else if (detectCommand(command, actionCommandsRightTurn)) {
+        ESP_LOGI(TAG, "detect command:右转");
+        // proceed_preset_action(103, 1, false);
+        i = 6;
+    } else if (detectCommand(command, actionCommandsBackTurn)) {
+        ESP_LOGI(TAG, "detect command:后转");
+        // proceed_preset_action(104, 1, false);
+        i = 7;
+    } else if (detectCommand(command, actionCommandsTurnCircle)) {
+        ESP_LOGI(TAG, "detect command:转圈");
+        // proceed_preset_action(105, 1, false);
+        i = 8;
+    } else if (detectCommand(command, actionCommandsStop)) {
+        ESP_LOGI(TAG, "detect command:停止");
+        // proceed_preset_action(0, 1, false);
+        i = 9;
+    } else if (detectCommand(command, actionCommandsDance)) {
+        ESP_LOGI(TAG, "detect command:跳个舞");
+        // proceed_preset_action(109, 1, false);
+        i = 10;
+    } else {
+        ESP_LOGI(TAG, "detect command:未知");
+    }
+    
+    esp_lcd_panel_draw_bitmap(panel1, 40, 40, 160+40, 160+40, image_data_robot_eyes[i]);
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+    esp_lcd_panel_draw_bitmap(panel2, 40, 40, 160+40, 160+40, image_data_robot_eyes[20-1-i]);
 }
